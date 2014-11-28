@@ -6,4 +6,4 @@ gem 'json', '~>1.8.1'
 gem 'lastfm', '~>1.23.0'
 gem 'similar_text', '~>0.0.4'
 gem 'musicbrainz', '~>0.7.6'
-
+gem 'logger', '~>1.2.8'

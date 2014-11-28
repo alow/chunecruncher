@@ -2,6 +2,7 @@ require 'mp3info'
 require 'digest'
 require 'json'
 require 'fileutils'
+require 'logger'
 
 $MP3DIR = '/chunes_directory'
 $MP3PARSER_CACHE = '/home/dir/chune_parser_cache'
@@ -10,16 +11,10 @@ $LOG_FILE = '/tmp/chune-sorter.log'
 
 abort "#{$MP3DIR} doesn't exist" unless Dir.exists?($MP3DIR)
 
-File.unlink($LOG_FILE) unless !File.exists?($LOG_FILE)
+log = Logger.new($LOG_FILE)
 
 def generate_hash(file)
   Digest::SHA1.file(file).hexdigest
-end
-
-def write_log(message)
-  f = File.new($LOG_FILE, "a")
-  f.write(message + "\n")
-  f.close
 end
 
 def read_cache(cache, id)

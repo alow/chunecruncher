@@ -4,6 +4,7 @@ require 'similar_text'
 require 'musicbrainz'
 require 'digest'
 require 'json'
+require 'logger'
 
 MusicBrainz.configure do |c|
   # Application identity (required)
@@ -30,7 +31,7 @@ $TOKEN = "" #= $LASTFM.auth.get_token
 
 abort "#{$MP3DIR} doesn't exist" unless Dir.exists?($MP3DIR)
 
-File.unlink($LOG_FILE) unless !File.exists?($LOG_FILE)
+log = Logger.new($LOG_FILE)
 
 $LASTFM = Lastfm.new($LASTFM_API_KEY, $LASTFM_API_SECRET)
 puts "http://www.last.fm/api/auth/?api_key=#{$LASTFM_API_KEY}&token=#{$LASTFM.auth.get_token}"
@@ -40,12 +41,6 @@ lastfm_album_not_exist = []
 
 def generate_hash(file)
   Digest::SHA1.file(file).hexdigest
-end
-
-def write_log(message)
-  f = File.new($LOG_FILE, "a")
-  f.write(message + "\n")
-  f.close
 end
 
 def musicbrainz_parse(field, mb_array)
@@ -110,15 +105,15 @@ end
 def album_search(mbid=nil, artist=nil, album=nil)
   begin
     if mbid.nil?
-      write_log("Getting album info from lastfm via artist/album search")
+      log.info("Getting album info from lastfm via artist/album search")
       album_info = $LASTFM.album.get_info(artist: artist, album: album, api_key: $LASTFM_API_KEY)
     else
-      write_log("Getting album info from lastfm via mbid")
+      log.info("Getting album info from lastfm via mbid")
       album_info = $LASTFM.album.get_info(mbid: mbid, api_key: $LASTFM_API_KEY)
     end
   rescue Lastfm::ApiError => e
     if e.message.strip == "Album not found"
-      write_log("Error getting album info from lastfm #{e.code}: #{e.message.strip}")
+      log.error("Error getting album info from lastfm #{e.code}: #{e.message.strip}")
       album_info = nil
     end
   end
@@ -129,15 +124,15 @@ end
 def track_search(mbid=nil, artist=nil, track=nil)
   begin
     if mbid.nil?
-      write_log("Getting track info from lastfm via artist/track")
+      log.info("Getting track info from lastfm via artist/track")
       lastfm_track_info = $LASTFM.track.get_info(artist: artist, track: track, api_key: $LASTFM_API_KEY)
     else
-      write_log("Getting track info from lastfm via mbid")
+      log.info("Getting track info from lastfm via mbid")
       lastfm_track_info = $LASTFM.track.get_info(mbid: mbid, api_key: $LASTFM_API_KEY)
     end
   rescue Lastfm::ApiError => e
     if e.message.strip == "Track not found"
-      write_log("Error getting track info from lastfm #{e.code}: #{e.message.strip}")
+      log.info("Error getting track info from lastfm #{e.code}: #{e.message.strip}")
       lastfm_track_info = nil
     end
   end
@@ -159,36 +154,36 @@ while !files.empty?
   else
     # working with a file, skip none mp3s
     next unless f.match(/\.mp3$/i)
-    write_log("#{files.length} entries left")
-    write_log("Reading: #{f}")
+    log.info("#{files.length} entries left")
+    log.info("Reading: #{f}")
     found_error = false
     track_hash  = generate_hash(f)
     track_info  = read_cache($MP3PARSER_CACHE, track_hash)
 
     track_info = check_mp3(f) unless !track_info.nil?
 
-    write_log("Processing #{track_info['artist']}::#{track_info['album']}::#{track_info['title']}")
+    log.info("Processing #{track_info['artist']}::#{track_info['album']}::#{track_info['title']}")
     # we probably haven't processed this file so let's process it
     album_info = read_cache($LASTFM_MB_ID_CACHE, track_info["album_mbid"])
 
     # We already know this album doesn't exist on lastfm so skip it
     if lastfm_album_not_exist.include?(track_info["album_mbid"])
-      write_log("Album (#{track_info["album_mbid"]}) doesn't exist on lastfm")
+      log.info("Album (#{track_info["album_mbid"]}) doesn't exist on lastfm")
       next
     end
 
     # no cached data, get data from lastfm and populate cache
     if !album_info.nil?
-      write_log("Read album from cache")
+      log.info("Read album from cache")
     else
       album_info = album_search(track_info["album_mbid"])
       album_info = album_search(nil, track_info["artist"], track_info["album"]) unless !album_info.nil?
 
       if !album_info.nil? && album_info["tracks"]["track"].kind_of?(Array)
-        write_log("Writing album cache")
+        log.info("Writing album cache")
         write_cache($LASTFM_MB_ID_CACHE, track_info["album_mbid"], album_info)
       else
-        write_log("Error getting album info from lastfm: #{track_info["album_mbid"]}")
+        log.info("Error getting album info from lastfm: #{track_info["album_mbid"]}")
         lastfm_album_not_exist.push(track_info["album_mbid"])
         found_error = true
       end
@@ -203,7 +198,7 @@ while !files.empty?
 
       album_info["tracks"]["track"].each_with_index do |lastfm_track, i|
         match_percentage = track_info["title"].to_s.downcase.similar(lastfm_track["name"].to_s.downcase)
-        write_log("Matching '#{track_info["title"]}' to '#{lastfm_track["name"]}': #{match_percentage}")
+        log.info("Matching '#{track_info["title"]}' to '#{lastfm_track["name"]}': #{match_percentage}")
         if best_match_percentage < match_percentage
           best_match_index      = i
           best_match_percentage = match_percentage
@@ -218,7 +213,7 @@ while !files.empty?
         track_info["lastfm_title"] = album_info["tracks"]["track"][best_match_index]["name"]
         track_info["lastfm_mbid"]  = album_info["tracks"]["track"][best_match_index]["mbid"]
 
-        write_log("Found match: #{track_info["title"]} getting track info from lastfm")
+        log.info("Found match: #{track_info["title"]} getting track info from lastfm")
 
         lastfm_track_info = track_search(track_info["lastfm_mbid"])
         lastfm_track_info = track_search(nil, track_info["artist"], track_info["lastfm_title"]) unless !lastfm_track_info.nil?
@@ -228,16 +223,16 @@ while !files.empty?
           track_info["processed"]             = true
 
           write_cache($MP3PARSER_CACHE, track_hash, track_info)
-          write_log("Writing cache file: #{track_info["title"]}")
+          log.info("Writing cache file: #{track_info["title"]}")
         else
-          write_log("Error getting track info from lastfm: #{track_info["lastfm_mbid"]}")
+          log.error("Error getting track info from lastfm: #{track_info["lastfm_mbid"]}")
           found_error = true
         end
       else
-        write_log("No match for: #{track_info["title"]}")
+        log.info("No match for: #{track_info["title"]}")
       end
     else
-      write_log("Processed already: #{track_info["title"]}")
+      log.info("Processed already: #{track_info["title"]}")
     end
 
     sleep 1.5 # Let's be courteous to our fellow netizen

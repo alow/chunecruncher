@@ -21,7 +21,6 @@ Usage
 
 TO DO
 -----
- * Update to use logger gem
  * Centralize configuration
  * Clean up code
  * This file
